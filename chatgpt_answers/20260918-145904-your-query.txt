@@ -1,0 +1,12 @@
+Query:  your query
+Asked:  2026-09-18 14:59:04
+Chat:   https://chatgpt.com/c/6aad0b52-71d8-83e8-b1cf-6803b63e28f1
+------------------------------------------------------------
+
+If you mean “what query should I use?”, tell me the topic or goal, and I’ll formulate a precise search query for you.
+
+For example:
+
+“Find companies that build affordable, custom HIPAA compliance software for 40-bed critical access hospitals with one-person IT teams.”
+
+I can also turn your requirements into a set of optimized queries for Google, ChatGPT, or vendor research.

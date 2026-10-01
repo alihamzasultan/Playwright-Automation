@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM Tracker Run</title>
+<style>
+  :root {
+    color-scheme: light;
+    --plane:        #f9f9f7;
+    --surface:      #fcfcfb;
+    --ink:          #0b0b0b;
+    --ink-2:        #52514e;
+    --muted:        #898781;
+    --grid:         #e1e0d9;
+    --baseline:     #c3c2b7;
+    --border:       rgba(11, 11, 11, 0.10);
+    /* magnitude only: one blue ramp. Engine identity lives in its label, never a hue. */
+    --accent:       #2a78d6;
+    --accent-soft:  #b7d3f6;
+    --track:        #e8eef7;
+    --good:         #0ca30c;
+    --warning:      #fab219;
+    --good-text:    #006300;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --plane:       #0d0d0d;
+      --surface:     #1a1a19;
+      --ink:         #ffffff;
+      --ink-2:       #c3c2b7;
+      --muted:       #898781;
+      --grid:        #2c2c2a;
+      --baseline:    #383835;
+      --border:      rgba(255, 255, 255, 0.10);
+      --accent:      #3987e5;
+      --accent-soft: #1c5cab;
+      --track:       #23262b;
+      --good:        #0ca30c;
+      --good-text:   #0ca30c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px;
+    background: var(--plane); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+
+  header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: baseline;
+           margin-bottom: 20px; }
+  h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px;
+          padding: 4px 11px; border-radius: 999px; border: 1px solid var(--border);
+          background: var(--surface); color: var(--ink-2); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--good); }
+  .dot.idle { background: var(--warning); }
+  .stamp { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+  .card { background: var(--surface); border: 1px solid var(--border);
+          border-radius: 12px; padding: 18px 20px; }
+  .grid { display: grid; gap: 14px; }
+  .hero-row { grid-template-columns: minmax(280px, 1.5fr) repeat(auto-fit, minmax(150px, 1fr)); }
+  @media (max-width: 760px) { .hero-row { grid-template-columns: 1fr 1fr; } }
+
+  .label { font-size: 13px; color: var(--ink-2); }
+  .hero { font-size: 52px; font-weight: 600; line-height: 1.05; letter-spacing: -0.02em;
+          margin: 6px 0 2px; }
+  .hero small { font-size: 19px; font-weight: 500; color: var(--muted);
+                letter-spacing: 0; }
+  .value { font-size: 27px; font-weight: 600; line-height: 1.15; margin: 6px 0 2px; }
+  .sub { font-size: 12.5px; color: var(--muted); }
+
+  /* Meter: accent fill on a lighter step of the same ramp. */
+  .meter { height: 10px; border-radius: 999px; background: var(--track);
+           overflow: hidden; margin-top: 14px; }
+  .meter > span { display: block; height: 100%; background: var(--accent);
+                  border-radius: 999px; transition: width .5s ease; }
+
+  h2 { font-size: 13px; font-weight: 600; text-transform: uppercase;
+       letter-spacing: .07em; color: var(--muted); margin: 28px 0 10px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; font-size: 14px;
+           border-bottom: 1px solid var(--grid); }
+  th { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .05em; border-bottom: 1px solid var(--baseline); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  tbody tr:last-child td { border-bottom: none; }
+  .name { font-weight: 500; }
+
+  /* Bar in a table cell: magnitude, with the value labelled directly beside it. */
+  .bar { display: flex; align-items: center; gap: 9px; }
+  .bar .track { flex: 1; height: 7px; background: var(--track); border-radius: 4px;
+                overflow: hidden; min-width: 60px; }
+  .bar .fill { display: block; height: 100%; background: var(--accent);
+               border-radius: 4px; transition: width .5s ease; }
+  .bar .pct { font-size: 12.5px; color: var(--ink-2); min-width: 42px;
+              text-align: right; font-variant-numeric: tabular-nums; }
+
+  .feed { display: flex; flex-direction: column; }
+  .row { display: grid; grid-template-columns: 62px 104px 52px 1fr auto;
+         gap: 12px; align-items: baseline; padding: 8px 10px; font-size: 13.5px;
+         border-bottom: 1px solid var(--grid); }
+  .row:last-child { border-bottom: none; }
+  .row:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .row .t, .row .r { color: var(--muted); font-variant-numeric: tabular-nums;
+                     font-size: 12.5px; }
+  .row .q { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; }
+  .row .m { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums;
+            white-space: nowrap; }
+  @media (max-width: 720px) {
+    .row { grid-template-columns: 56px 1fr auto; }
+    .row .r, .row .q { display: none; }
+  }
+  .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+         border: 1px solid var(--border); color: var(--ink-2); white-space: nowrap; }
+  .empty { color: var(--muted); padding: 18px 10px; }
+  .note { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+  .err { color: #d03b3b; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>LLM Tracker Run</h1>
+    <span class="pill" id="status"><i class="dot" id="dot"></i><span id="statusText">connecting…</span></span>
+    <span class="stamp" id="stamp"></span>
+  </header>
+
+  <div class="grid hero-row">
+    <div class="card">
+      <div class="label">Answer cells filled</div>
+      <div class="hero" id="heroValue">—<small id="heroTotal"></small></div>
+      <div class="sub" id="heroPct"></div>
+      <div class="meter"><span id="heroMeter" style="width:0%"></span></div>
+    </div>
+    <div class="card">
+      <div class="label">Queries</div>
+      <div class="value" id="queries">—</div>
+      <div class="sub">rows in the workbook</div>
+    </div>
+    <div class="card">
+      <div class="label">Captured this run</div>
+      <div class="value" id="logged">—</div>
+      <div class="sub">in the append-only log</div>
+    </div>
+    <div class="card">
+      <div class="label">Pace</div>
+      <div class="value" id="pace">—</div>
+      <div class="sub" id="paceSub">last 10 minutes</div>
+    </div>
+  </div>
+
+  <h2>By engine</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Engine</th>
+          <th class="num">Answered</th>
+          <th style="width:30%">Of all queries</th>
+          <th class="num">Avg length</th>
+          <th class="num">With sources</th>
+          <th class="num">Notes</th>
+        </tr>
+      </thead>
+      <tbody id="engineRows"></tbody>
+    </table>
+    <div class="note">“Answered” counts every filled cell in the workbook, including rows
+      carried over from the manual tracker. The other columns describe only what this
+      tool captured, so they can be lower.</div>
+  </div>
+
+  <h2>By sub-industry</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>Sub-industry</th>
+          <th class="num">Queries</th>
+          <th class="num">Rows answered</th>
+          <th style="width:34%">Progress</th>
+        </tr>
+      </thead>
+      <tbody id="sheetRows"></tbody>
+    </table>
+  </div>
+
+  <h2>Latest answers</h2>
+  <div class="card feed" id="feed"><div class="empty">waiting for data…</div></div>
+</div>
+
+<script>
+const fmt = n => (n ?? 0).toLocaleString();
+const el = id => document.getElementById(id);
+
+function bar(done, total) {
+  const pct = total ? Math.min(100, (done / total) * 100) : 0;
+  const shown = pct > 0 && pct < 1 ? pct.toFixed(1) : Math.round(pct);
+  return `<div class="bar" title="${fmt(done)} of ${fmt(total)}">
+            <span class="track"><span class="fill" style="width:${pct}%"></span></span>
+            <span class="pct">${shown}%</span>
+          </div>`;
+}
+
+const KINDS = {
+  fallback: ['text fallback', 'captured from the page text — the answer selectors missed'],
+  none:     ['no overview',   'Google returned no AI Overview for this query'],
+  heading:  ['by heading',    'found via the AI Overview heading rather than a selector'],
+};
+
+function render(s) {
+  el('dot').className = 'dot ' + (s.active ? 'live' : 'idle');
+  const idle = s.idle_seconds;
+  el('statusText').textContent = s.active
+    ? 'run active'
+    : (idle == null ? 'no log yet'
+        : idle < 3600 ? `idle ${Math.round(idle / 60)} min`
+        : `idle ${(idle / 3600).toFixed(1)} h`);
+  el('stamp').textContent = 'updated ' + new Date().toLocaleTimeString();
+
+  el('heroValue').textContent = fmt(s.cells_done);
+  el('heroTotal').textContent = ' / ' + fmt(s.cells_total);
+  const pct = s.cells_total ? (s.cells_done / s.cells_total) * 100 : 0;
+  el('heroPct').textContent = pct.toFixed(1) + '% of all answer cells'
+    + (s.has_snapshot ? '' : ' — totals unavailable, run has not saved yet');
+  el('heroMeter').style.width = Math.min(100, pct) + '%';
+
+  el('queries').textContent = fmt(s.queries);
+  el('logged').textContent = fmt(s.logged);
+  el('pace').textContent = fmt(s.pace_10m);
+  el('paceSub').textContent = `last 10 min · ${fmt(s.pace_60m)} in the last hour`;
+
+  el('engineRows').innerHTML = s.engines.map(e => {
+    const answered = (s.answers_by_engine || {})[e.name] ?? 0;
+    const notes = [];
+    if (e.none) notes.push(`${e.none} no-overview`);
+    if (e.fallback) notes.push(`${e.fallback} fallback`);
+    return `<tr>
+      <td class="name">${e.name}</td>
+      <td class="num">${fmt(answered)}</td>
+      <td>${bar(answered, s.queries)}</td>
+      <td class="num">${e.avg_chars ? fmt(e.avg_chars) + ' ch' : '—'}</td>
+      <td class="num">${e.count ? e.with_sources + '/' + e.count : '—'}</td>
+      <td class="num">${notes.length ? notes.join(' · ') : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const active = s.sheets.filter(x => x.rows_answered > 0);
+  const rest = s.sheets.length - active.length;
+  el('sheetRows').innerHTML = (active.length ? active : s.sheets.slice(0, 8)).map(x =>
+    `<tr>
+      <td class="name">${x.sub_industry}</td>
+      <td class="num">${fmt(x.rows)}</td>
+      <td class="num">${fmt(x.rows_answered)}</td>
+      <td>${bar(x.rows_answered, x.rows)}</td>
+    </tr>`).join('')
+    + (active.length && rest > 0
+        ? `<tr><td colspan="4" class="sub">and ${rest} sub-industries not started</td></tr>`
+        : '');
+
+  el('feed').innerHTML = s.recent.length ? s.recent.map(r => {
+    const k = KINDS[r.kind];
+    return `<div class="row">
+      <span class="t">${r.ts}</span>
+      <span class="name">${r.engine}</span>
+      <span class="r">r${r.row}</span>
+      <span class="q" title="${r.query.replace(/"/g, '&quot;')}">${r.query}</span>
+      <span class="m">${fmt(r.chars)} ch · ${r.sources} src${
+        k ? `<span class="tag" title="${k[1]}">${k[0]}</span>` : ''}</span>
+    </div>`;
+  }).join('') : '<div class="empty">No answers logged yet.</div>';
+}
+
+async function tick() {
+  try {
+    const res = await fetch('/api/state', { cache: 'no-store' });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    render(data);
+  } catch (err) {
+    el('statusText').textContent = 'cannot reach dashboard.py';
+    el('statusText').className = 'err';
+    el('dot').className = 'dot';
+  }
+}
+tick();
+setInterval(tick, 4000);
+</script>
+</body>
+</html>
